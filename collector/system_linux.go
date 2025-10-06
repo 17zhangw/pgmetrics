@@ -46,6 +46,9 @@ func (c *collector) collectSystem(o CollectConfig) {
 
 	// 5. hostname
 	c.result.System.Hostname, _ = os.Hostname()
+
+	// 6. disk I/O statistics
+	c.getDiskStats()
 }
 
 func (c *collector) doStatFS(t *pgmetrics.Tablespace) {
@@ -135,5 +138,99 @@ func (c *collector) getMemory() {
 				c.result.System.SwapFree = val2
 			}
 		}
+	}
+}
+
+func (c *collector) getDiskStats() {
+	raw, err := os.ReadFile("/proc/diskstats")
+	if err != nil {
+		return
+	}
+
+	scanner := bufio.NewScanner(bytes.NewReader(raw))
+	for scanner.Scan() {
+		line := scanner.Text()
+		fields := strings.Fields(line)
+		if len(fields) < 14 {
+			continue // skip malformed lines
+		}
+
+		// Parse the basic fields (first 14 are always present)
+		var ds pgmetrics.DiskStats
+		var err error
+
+		if ds.Major, err = strconv.Atoi(fields[0]); err != nil {
+			continue
+		}
+		if ds.Minor, err = strconv.Atoi(fields[1]); err != nil {
+			continue
+		}
+		ds.DeviceName = fields[2]
+
+		if ds.ReadsCompleted, err = strconv.ParseInt(fields[3], 10, 64); err != nil {
+			continue
+		}
+		if ds.ReadsMerged, err = strconv.ParseInt(fields[4], 10, 64); err != nil {
+			continue
+		}
+		if ds.SectorsRead, err = strconv.ParseInt(fields[5], 10, 64); err != nil {
+			continue
+		}
+		if ds.ReadTime, err = strconv.ParseInt(fields[6], 10, 64); err != nil {
+			continue
+		}
+		if ds.WritesCompleted, err = strconv.ParseInt(fields[7], 10, 64); err != nil {
+			continue
+		}
+		if ds.WritesMerged, err = strconv.ParseInt(fields[8], 10, 64); err != nil {
+			continue
+		}
+		if ds.SectorsWritten, err = strconv.ParseInt(fields[9], 10, 64); err != nil {
+			continue
+		}
+		if ds.WriteTime, err = strconv.ParseInt(fields[10], 10, 64); err != nil {
+			continue
+		}
+		if ds.IOInProgress, err = strconv.ParseInt(fields[11], 10, 64); err != nil {
+			continue
+		}
+		if ds.IOTime, err = strconv.ParseInt(fields[12], 10, 64); err != nil {
+			continue
+		}
+		if ds.WeightedIOTime, err = strconv.ParseInt(fields[13], 10, 64); err != nil {
+			continue
+		}
+
+		// Parse optional fields (discard and flush stats, available since kernel 4.18)
+		if len(fields) >= 18 {
+			if ds.DiscardsCompleted, err = strconv.ParseInt(fields[14], 10, 64); err != nil {
+				ds.DiscardsCompleted = 0
+			}
+			if ds.DiscardsMerged, err = strconv.ParseInt(fields[15], 10, 64); err != nil {
+				ds.DiscardsMerged = 0
+			}
+			if ds.SectorsDiscarded, err = strconv.ParseInt(fields[16], 10, 64); err != nil {
+				ds.SectorsDiscarded = 0
+			}
+			if ds.DiscardTime, err = strconv.ParseInt(fields[17], 10, 64); err != nil {
+				ds.DiscardTime = 0
+			}
+		}
+
+		if len(fields) >= 20 {
+			if ds.FlushCompleted, err = strconv.ParseInt(fields[18], 10, 64); err != nil {
+				ds.FlushCompleted = 0
+			}
+			if ds.FlushTime, err = strconv.ParseInt(fields[19], 10, 64); err != nil {
+				ds.FlushTime = 0
+			}
+		}
+
+		// Skip loop devices and other non-physical devices
+		if ds.Major == 7 || ds.Major == 11 || ds.Major == 1 {
+			continue
+		}
+
+		c.result.System.DiskStats = append(c.result.System.DiskStats, ds)
 	}
 }

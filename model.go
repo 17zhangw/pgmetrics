@@ -19,6 +19,7 @@ package pgmetrics
 // ModelSchemaVersion is the schema version of the "Model" data structure
 // defined below. It is in the "semver" notation. Version history:
 //
+//	1.20 - Disk I/O statistics from /proc/diskstats
 //	1.19 - Postgres 18 support
 //	1.18 - Add schema name for extensions
 //	1.17 - Raw log entries, Postgres 17 support
@@ -40,7 +41,7 @@ package pgmetrics
 //	1.2 - more table and index attributes
 //	1.1 - added NotificationQueueUsage and Statements
 //	1.0 - initial release
-const ModelSchemaVersion = "1.19"
+const ModelSchemaVersion = "1.20"
 
 // Model contains the entire information collected by a single run of
 // pgmetrics. It can be converted to and from json without loss of
@@ -296,6 +297,32 @@ type SystemMetrics struct {
 	Hostname   string  `json:"hostname"`            // hostname from the OS
 	// following fields present only in schema 1.8 and later
 	MemSlab int64 `json:"memslab"` // RAM used for slab in bytes
+	// following fields present only in schema 1.20 and later
+	DiskStats []DiskStats `json:"diskstats,omitempty"` // disk I/O statistics from /proc/diskstats
+}
+
+// DiskStats represents disk I/O statistics from /proc/diskstats
+type DiskStats struct {
+	Major           int    `json:"major"`            // major number
+	Minor           int    `json:"minor"`            // minor number
+	DeviceName      string `json:"device_name"`      // device name
+	ReadsCompleted  int64  `json:"reads_completed"`  // reads completed successfully
+	ReadsMerged     int64  `json:"reads_merged"`     // reads merged
+	SectorsRead     int64  `json:"sectors_read"`     // sectors read
+	ReadTime        int64  `json:"read_time"`        // time spent reading (ms)
+	WritesCompleted int64  `json:"writes_completed"` // writes completed
+	WritesMerged    int64  `json:"writes_merged"`    // writes merged
+	SectorsWritten  int64  `json:"sectors_written"`  // sectors written
+	WriteTime       int64  `json:"write_time"`       // time spent writing (ms)
+	IOInProgress    int64  `json:"io_in_progress"`   // I/Os currently in progress
+	IOTime          int64  `json:"io_time"`          // time spent doing I/Os (ms)
+	WeightedIOTime  int64  `json:"weighted_io_time"` // weighted time spent doing I/Os (ms)
+	DiscardsCompleted int64 `json:"discards_completed"` // discards completed successfully
+	DiscardsMerged  int64  `json:"discards_merged"`  // discards merged
+	SectorsDiscarded int64 `json:"sectors_discarded"` // sectors discarded
+	DiscardTime     int64  `json:"discard_time"`     // time spent discarding (ms)
+	FlushCompleted  int64  `json:"flush_completed"`  // flush requests completed successfully
+	FlushTime       int64  `json:"flush_time"`       // time spent flushing (ms)
 }
 
 type Backend struct {
