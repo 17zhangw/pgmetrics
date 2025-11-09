@@ -586,6 +586,9 @@ func (c *collector) collectDatabase(o CollectConfig) {
 	if !arrayHas(o.Omit, "statements") {
 		c.getStatements(currdb)
 	}
+	if !arrayHas(o.Omit, "hints") {
+		c.getHints()
+	}
 	if !arrayHas(o.Omit, "bloat") {
 		c.getBloat()
 	}
@@ -2446,6 +2449,36 @@ func (c *collector) getStatementsPrev18(schema string) {
 	}
 	if err := rows.Err(); err != nil {
 		log.Fatalf("pg_stat_statements failed: %v", err)
+	}
+}
+
+func (c *collector) getHints() {
+	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
+	defer cancel()
+
+	// Check if hint_plan.hints table exists
+	q := `SELECT id, query_id, application_name, hints
+		  FROM hint_plan.hints
+		  ORDER BY id ASC`
+	rows, err := c.db.QueryContext(ctx, q)
+	if err != nil {
+		// Table might not exist if pg_hint_plan extension is not installed
+		// or hints table is not created. This is not a fatal error.
+		log.Printf("info: hint_plan.hints query skipped: %v", err)
+		return
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var h pgmetrics.Hint
+		if err := rows.Scan(&h.ID, &h.QueryID, &h.ApplicationName, &h.Hints); err != nil {
+			log.Printf("warning: hint_plan.hints scan failed: %v", err)
+			continue
+		}
+		c.result.Hints = append(c.result.Hints, h)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("warning: hint_plan.hints iteration failed: %v", err)
 	}
 }
 
